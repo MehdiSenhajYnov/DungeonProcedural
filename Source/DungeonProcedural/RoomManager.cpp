@@ -90,7 +90,8 @@ void URoomManager::MegaTriangle(TSubclassOf<ARoomParent> Room)
 	AActor* RightTriangle = GetWorld()->SpawnActor(Room);
 	RightTriangle->SetActorLocation(FVector(avgX+difX*4,avgY-difY*2,0));
 	
-	AllTriangles.Add(FTriangle(UpTriangle->GetActorLocation(),LeftTriangle->GetActorLocation(),UpTriangle->GetActorLocation()));
+	AllTriangles.Add(FTriangle(UpTriangle->GetActorLocation(),LeftTriangle->GetActorLocation(),RightTriangle->GetActorLocation()));
+	AllTriangles.Last().DrawTriangle(GetWorld());
 }
 
 void URoomManager::Triangulation(TSubclassOf<ARoomParent> RoomP)
