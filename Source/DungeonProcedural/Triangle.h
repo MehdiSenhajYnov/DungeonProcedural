@@ -3,11 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Triangle.generated.h"
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FTriangle
 {
 	GENERATED_BODY()
+	FTriangle() = default;
 	FTriangle(FVector pointA, FVector pointB, FVector pointC);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -19,28 +21,24 @@ struct FTriangle
 	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	FVector PointC;
 
-	UFUNCTION(BlueprintCallable)
 	FVector CenterCircle();
 
-	UFUNCTION()
 	float GetArea();
 
-	UFUNCTION()
 	float GetRayon();
 
-	UFUNCTION()
 	void DrawTriangle(const UWorld* InWorld);
 };
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FLine
 {
+	GENERATED_BODY()
 	UPROPERTY()
 	FVector Direction;
 
 	UPROPERTY()
 	FVector Point;
 
-	UFUNCTION()
 	bool Intersection(FLine LineChecked,FVector& OutCenter);
 };
