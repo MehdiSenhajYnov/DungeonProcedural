@@ -8,34 +8,52 @@ FTriangle::FTriangle(FVector pointA, FVector pointB, FVector pointC)
 	PointA = pointA;
 	PointB = pointB;
 	PointC = pointC;
+	points.Add(PointA);
+	points.Add(PointB);
+	points.Add(PointC);
 }
 
-FVector FTriangle::CenterCircle()
+TArray<FVector> FTriangle::GetAllPoints() const
 {
-	FVector Center;
-	FVector Bprime = (PointA+PointB)/2;
-	FVector Aprime = (PointA+PointC)/2;
-
-	FVector ABdirection = PointB - PointA;
-	FLine PerpAB;
-	PerpAB.Direction = FVector(-ABdirection.Y,ABdirection.X,0); 
-	PerpAB.Point = Bprime;
-
-	FVector ACdirection = PointA - PointC;
-	FLine PerpAC;
-	PerpAC.Direction = FVector(-ACdirection.Y,ACdirection.X,0); 
-	PerpAC.Point = Aprime;
-
-	FVector M;
-	bool result = PerpAB.Intersection(PerpAC,M);
-	if (result)
-	{
-		return FVector();
-	}
-	return M;
+	TArray<FVector> AllPoints;
+	AllPoints.Add(PointA);
+	AllPoints.Add(PointB);
+	AllPoints.Add(PointC);
+	return AllPoints;
 }
 
-float FTriangle::GetArea()
+TArray<FTriangleEdge> FTriangle::GetEdges() const
+{
+	TArray<FTriangleEdge> Edges;
+	Edges.Add(FTriangleEdge(PointA, PointB));
+	Edges.Add(FTriangleEdge(PointB, PointC));
+	Edges.Add(FTriangleEdge(PointC, PointA));
+	return Edges;
+}
+
+bool FTriangle::CenterCircle(FVector& outCenter) const
+{
+	double D = 2 * (PointA.X * (PointB.Y - PointC.Y) + PointB.X * (PointC.Y - PointA.Y) + PointC.X * (PointA.Y - PointB.Y));
+	if (FMath::IsNearlyZero(D))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Les points sont colinéaires!"))
+		return false;
+	}
+    
+	// Calcul des coordonnées du circumcenter
+	double ux = ((PointA.X*PointA.X + PointA.Y*PointA.Y) * (PointB.Y - PointC.Y) + 
+				 (PointB.X*PointB.X + PointB.Y*PointB.Y) * (PointC.Y - PointA.Y) + 
+				 (PointC.X*PointC.X + PointC.Y*PointC.Y) * (PointA.Y - PointB.Y)) / D;
+    
+	double uy = ((PointA.X*PointA.X + PointA.Y*PointA.Y) * (PointC.X - PointB.X) + 
+				 (PointB.X*PointB.X + PointB.Y*PointB.Y) * (PointA.X - PointC.X) + 
+				 (PointC.X*PointC.X + PointC.Y*PointC.Y) * (PointB.X - PointA.X)) / D;
+    
+	outCenter = FVector(ux, uy,0);
+	return true;
+}
+
+float FTriangle::GetArea() const
 {
 	FVector ab = PointB - PointA;
 	FVector bc = PointC - PointB;
@@ -47,7 +65,7 @@ float FTriangle::GetArea()
 	return S;
 }
 
-float FTriangle::GetRayon()
+float FTriangle::GetRayon() const
 {
 	FVector ab = PointB - PointA;
 	FVector bc = PointC - PointB;
@@ -59,11 +77,11 @@ float FTriangle::GetRayon()
 	return R;
 }
 
-void FTriangle::DrawTriangle(const UWorld* InWorld)
+void FTriangle::DrawTriangle(const UWorld* InWorld, FColor ColorToUse) const
 {
-	DrawDebugLine(InWorld, PointA, PointB,FColor(0,255,0),true,-1,0,50);
-	DrawDebugLine(InWorld, PointB, PointC,FColor(0,255,0),true,-1,0,50);
-	DrawDebugLine(InWorld, PointC, PointA,FColor(0,255,0),true,-1,0,50);
+	DrawDebugLine(InWorld, PointA, PointB, ColorToUse,true,-1,0,50);
+	DrawDebugLine(InWorld, PointB, PointC, ColorToUse,true,-1,0,50);
+	DrawDebugLine(InWorld, PointC, PointA, ColorToUse,true,-1,0,50);
 
 }
 

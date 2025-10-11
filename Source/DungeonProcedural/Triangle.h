@@ -12,6 +12,16 @@ struct FTriangle
 	FTriangle() = default;
 	FTriangle(FVector pointA, FVector pointB, FVector pointC);
 
+	bool operator==(const FTriangle& Other) const
+	{
+		return GetAllPoints().Contains(Other.PointA) && GetAllPoints().Contains(Other.PointB) && GetAllPoints().Contains(Other.PointC);
+	}
+
+	bool operator!=(const FTriangle& Other) const
+	{
+		return !(*this == Other);
+	}
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector PointA;
 
@@ -21,13 +31,19 @@ struct FTriangle
 	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	FVector PointC;
 
-	FVector CenterCircle();
+	TArray<FVector> GetAllPoints() const;
 
-	float GetArea();
+	TArray<FTriangleEdge> GetEdges() const;
 
-	float GetRayon();
+	bool CenterCircle(FVector& outCenter) const;
 
-	void DrawTriangle(const UWorld* InWorld);
+	float GetArea() const;
+
+	float GetRayon() const;
+
+	void DrawTriangle(const UWorld* InWorld, FColor ColorToUse = FColor(0,255,0)) const;
+private:
+	TArray<FVector> points;
 };
 
 USTRUCT(BlueprintType)
@@ -41,4 +57,26 @@ struct FLine
 	FVector Point;
 
 	bool Intersection(FLine LineChecked,FVector& OutCenter);
+};
+
+// Structure pour représenter une arête entre deux points
+USTRUCT(BlueprintType)
+struct FTriangleEdge
+{
+	GENERATED_BODY()
+	
+	FTriangleEdge() = default;
+	FTriangleEdge(const FVector& A, const FVector& B) : PointA(A), PointB(B) {}
+	
+	UPROPERTY()
+	FVector PointA;
+	
+	UPROPERTY()
+	FVector PointB;
+	
+	bool operator==(const FTriangleEdge& Other) const
+	{
+		return (PointA.Equals(Other.PointA) && PointB.Equals(Other.PointB)) ||
+			   (PointA.Equals(Other.PointB) && PointB.Equals(Other.PointA));
+	}
 };
