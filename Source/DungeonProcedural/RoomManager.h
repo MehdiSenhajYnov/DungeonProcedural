@@ -32,11 +32,15 @@ public:
 	void Triangulation(TSubclassOf<ARoomParent> RoomP);
 
 	UFUNCTION(BlueprintCallable)
-	void TriangulationStepByStep(TSubclassOf<ARoomParent> RoomP);
+	void CreatePath(TSubclassOf<ARoomParent> RoomP);
 
 	UFUNCTION(BlueprintCallable)
-	void TriangulationLittleStep(TSubclassOf<ARoomParent> RoomP);
-	
+	void EvolvePath();	
+
+	UFUNCTION(BlueprintCallable)
+	void ClearSecondaryRoom(TSubclassOf<ARoomParent> SecondaryRoomType);
+	bool IsSegmentIntersectingBox(const FVector& PointA, const FVector& PointB, const FVector& CenterOfBox, FVector Size);
+
 	UPROPERTY()
 	TArray<FTriangle> TriangleErased;
 	UPROPERTY()
@@ -44,6 +48,14 @@ public:
 
 	UPROPERTY()
 	TArray<FTriangle> AllTriangles;
+
+	UPROPERTY()
+	TArray<FTriangleEdge> FirstPath;
+
+	UPROPERTY()
+	TArray<FTriangleEdge> EvolvedPath;
+	
+	
 
 	// Fonction principale à appeler
 	void ResolveRoomOverlaps(TArray<ARoomParent*>& SpawnedActors);
@@ -54,6 +66,9 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void ClearAll();
+
+	template<typename T>
+	const T* GetAnyElement(const TSet<T>& Set);
 private:
 	bool CheckOverlapping(const UBoxComponent* BoxA, const UBoxComponent* BoxB);
 

@@ -6,7 +6,9 @@
 #include "Components/BoxComponent.h"
 #include "DungeonProcedural/Triangle.h"
 #include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetSystemLibrary.h"
+#include "Math/Box.h"
+#include "Math/Vector.h"
+#include "Math/UnrealMathUtility.h"
 
 #pragma optimize("", off)
 
@@ -193,360 +195,250 @@ void URoomManager::Triangulation(TSubclassOf<ARoomParent> RoomP)
 	UE_LOG(LogTemp, Display, TEXT("FINI!"))
 }
 
-void URoomManager::TriangulationStepByStep(TSubclassOf<ARoomParent> RoomP)
+void URoomManager::CreatePath(TSubclassOf<ARoomParent> RoomP)
 {
-	if (CurrentLittleStep != 0)
-	{
-		UE_LOG(LogTemp, Display, TEXT("CurrentLittleStep different de 0, on fini d'abords les petites étapes !"));
-		TriangulationLittleStep(RoomP);
-		return;
-	}
-	TArray<ToDrawCircle> AllToDraw;
+	ClearDrawAll();
 	TArray<AActor*> RoomPrincipal;
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(),RoomP,RoomPrincipal);
+
 	if (AllTriangles.Num() <= 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Faire le megatriangle avant !"));
 		return;
 	}
-	FTriangle Megatriangle = AllTriangles.Last();
 
-	if (!RoomPrincipal.IsValidIndex(CurrentStep))
+	TSet<FVector> PointAlreadyUsed;
+	
+	TSet<FTriangleEdge> AllEdges;
+
+	TMap<float,TSet<FTriangleEdge>> PointsSortedByDistance;
+	FVector RoomLocation = RoomPrincipal[0]->GetActorLocation();
+
+	while (PointAlreadyUsed.Num() < RoomPrincipal.Num())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Current Step pas bon"));
-		return;
-	}
-	const AActor* Room = RoomPrincipal[CurrentStep];
-	if (CurrentStep == 0)
-	{
-		FTriangle T1 = FTriangle(Room->GetActorLocation(), Megatriangle.PointA, Megatriangle.PointB);
-		FTriangle T2 = FTriangle(Room->GetActorLocation(), Megatriangle.PointB, Megatriangle.PointC);
-		FTriangle T3 = FTriangle(Room->GetActorLocation(), Megatriangle.PointC, Megatriangle.PointA);
+		PointAlreadyUsed.Add(RoomLocation);
 		
-		AllTriangles.Add(T1);
-		AllTriangles.Add(T2);
-		AllTriangles.Add(T3);
-
-		LastTrianglesCreated.Add(T1);
-		LastTrianglesCreated.Add(T2);
-		LastTrianglesCreated.Add(T3);
-
-	}
-	else
-	{
-		// tracage les cercles circonscrit des differents triangles, et si le point choisi fait partie du cercle, on efface le triangle proprietaire du cercle
-		for (FTriangle& TriangleToCheck : LastTrianglesCreated)
+		for (FTriangle TriangleToCheck : AllTriangles)
 		{
-			// dist centre circle et point
-			// si il est plus grand ou plus petit que le rayon
-			FVector CenterCircle;
-			bool result = TriangleToCheck.CenterCircle(CenterCircle);
-			if (!result)
+			if (TriangleToCheck.GetAllPoints().Contains(RoomLocation))
 			{
-				continue;
-			}
-			float Dist = FMath::Abs((CenterCircle - Room->GetActorLocation()).Length());
-			FVector CenterCircleToDraw;
-			bool CenterCircleIsGood = TriangleToCheck.CenterCircle(CenterCircleToDraw);
-			if (CenterCircleIsGood)
-			{
-				AllToDraw.Add(ToDrawCircle(CenterCircleToDraw,TriangleToCheck.GetRayon()));
-			} else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("Center circle is not good"));
-			}
-			if (Dist <= TriangleToCheck.GetRayon())
-			{
-				AllTriangles.Remove(TriangleToCheck);
-				TriangleErased.Add(TriangleToCheck);
-			}
-		}
-		LastTrianglesCreated.Empty();
-		
-		// ALGORITHME BOWYER-WATSON CORRECT
-		// 1. Collecter toutes les edges des triangles supprimés
-		TArray<FTriangleEdge> AllEdges;
-		for (FTriangle& ErasedTriangle : TriangleErased)
-		{
-			TArray<FTriangleEdge> TriangleEdges = ErasedTriangle.GetEdges();
-			AllEdges.Append(TriangleEdges);
-		}
-
-		// 2. Identifier les edges de boundary (qui apparaissent exactement une fois)
-		TArray<FTriangleEdge> BoundaryEdges;
-		for (int32 EdgeIdx = 0; EdgeIdx < AllEdges.Num(); ++EdgeIdx)
-		{
-			if (AllEdges[EdgeIdx].PointA.IsZero() && AllEdges[EdgeIdx].PointB.IsZero()) 
-				continue; // Skip edges marquées comme supprimées
-			
-			int32 Count = 1;
-			// Compter combien de fois cette edge apparaît
-			for (int32 j = EdgeIdx + 1; j < AllEdges.Num(); ++j)
-			{
-				if (AllEdges[EdgeIdx] == AllEdges[j])
+				for (const FTriangleEdge& TrianglesEdge : TriangleToCheck.GetEdges())
 				{
-					Count++;
-					// Marquer l'edge comme traitée
-					AllEdges[j].PointA = FVector::ZeroVector;
-					AllEdges[j].PointB = FVector::ZeroVector;
+					if (PointAlreadyUsed.Contains(TrianglesEdge.PointA) && PointAlreadyUsed.Contains(TrianglesEdge.PointB))
+					{
+						continue;
+					}
+					if (TrianglesEdge.PointA == RoomLocation || TrianglesEdge.PointB == RoomLocation)
+					{
+						AllEdges.Add(TrianglesEdge);
+						if (!PointsSortedByDistance.Contains(TrianglesEdge.GetLength()))
+						{
+							PointsSortedByDistance.Add(TrianglesEdge.GetLength(), TSet<FTriangleEdge>());
+						}
+
+						PointsSortedByDistance[TrianglesEdge.GetLength()].Add(TrianglesEdge);
+					}
 				}
 			}
-			
-			// Si l'edge apparaît exactement une fois, c'est une edge de boundary
-			if (Count == 1)
-			{
-				BoundaryEdges.Add(AllEdges[EdgeIdx]);
-			}
 		}
+
+		TArray<float> DistancesToRemove;
+		bool HaveToEnd = false;
 		
-		TriangleErased.Empty();
-
-		// 3. Créer de nouveaux triangles en connectant le point à chaque edge de boundary
-		TArray<FTriangle> TrianglesToAdd;
-		for (const FTriangleEdge& Edge : BoundaryEdges)
+		for (auto& [distance, EdgesSorted] : PointsSortedByDistance)
 		{
-			FTriangle NewTriangle(Room->GetActorLocation(), Edge.PointA, Edge.PointB);
-			TrianglesToAdd.Add(NewTriangle);
-		}
-
-
-		// Ajouts des triangles a la liste
-		for (FTriangle& TriangleToAdd : TrianglesToAdd)
-		{
-			TriangleToAdd.DrawTriangle(GetWorld());
-			AllTriangles.AddUnique(TriangleToAdd);
-			LastTrianglesCreated.Add(TriangleToAdd);
-		}
-	}
-	
-	CurrentStep +=1;
-	
-	DrawAll();
-	DrawDebugSphere(GetWorld(),Room->GetActorLocation(),50,50,FColor(0,0,0),true,-1,0 , 50);
-	for (auto toDraw : AllToDraw)
-	{
-		DrawDebugCircle(GetWorld(), toDraw.Center, toDraw.radius, 50, FColor::Blue, true, -1, 0, 50, FVector(0,1,0), FVector(1,0,0));
-	}
-
-	UE_LOG(LogTemp, Display, TEXT("FINI!"))
-}
-
-void URoomManager::TriangulationLittleStep(TSubclassOf<ARoomParent> RoomP)
-{
-	TArray<ToDrawCircle> AllToDraw;
-	TArray<AActor*> RoomPrincipal;
-	UGameplayStatics::GetAllActorsOfClass(GetWorld(),RoomP,RoomPrincipal);
-	if (AllTriangles.Num() <= 0)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Faire le megatriangle avant !"));
-		return;
-	}
-	FTriangle Megatriangle = AllTriangles.Last();
-
-	if (!RoomPrincipal.IsValidIndex(CurrentStep))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Current Step pas bon"));
-		return;
-	}
-	const AActor* Room = RoomPrincipal[CurrentStep];
-
-	UE_LOG(LogTemp, Display, TEXT("Etape : %d.%d!"), CurrentStep, CurrentLittleStep)
-	
-	// Premiere Etape pour montrer le choix de la room
-	if (CurrentLittleStep == 0)
-	{
-		CurrentLittleStep += 1;
-	}
-	else
-	{
-		if (CurrentStep == 0)
-		{
-
-				
-			if (CurrentLittleStep == 1)
+			TArray<FTriangleEdge> EdgeToRemove;
+			for (const FTriangleEdge& EdgeToUse : EdgesSorted)
 			{
-				CurrentLittleStep +=1;
-				FTriangle T1 = FTriangle(Room->GetActorLocation(), Megatriangle.PointA, Megatriangle.PointB);
-				FTriangle T2 = FTriangle(Room->GetActorLocation(), Megatriangle.PointB, Megatriangle.PointC);
-				FTriangle T3 = FTriangle(Room->GetActorLocation(), Megatriangle.PointC, Megatriangle.PointA);
-				
-				LastTrianglesCreated.Add(T1);
-				LastTrianglesCreated.Add(T2);
-				LastTrianglesCreated.Add(T3);
-		
-			} else if (CurrentLittleStep == 2)
-			{
-				CurrentLittleStep = 0;
-				CurrentStep +=1;
-				if (LastTrianglesCreated.Num() >= 3)
+
+				if (PointAlreadyUsed.Contains(EdgeToUse.PointA) && PointAlreadyUsed.Contains(EdgeToUse.PointB))
 				{
-					AllTriangles.Add(LastTrianglesCreated[LastTrianglesCreated.Num() - 1]);
-					AllTriangles.Add(LastTrianglesCreated[LastTrianglesCreated.Num() - 2]);
-					AllTriangles.Add(LastTrianglesCreated[LastTrianglesCreated.Num() - 3]);
-				}
-			}
-			
-			for (FTriangle& TriangleToCheck : LastTrianglesCreated)
-			{
-				FVector CenterCircle;
-				bool result = TriangleToCheck.CenterCircle(CenterCircle);
-				if (!result)
-				{
+					EdgeToRemove.Add(EdgeToUse);
 					continue;
 				}
-				FVector CenterCircleToDraw;
-				bool CenterCircleIsGood = TriangleToCheck.CenterCircle(CenterCircleToDraw);
-				if (CenterCircleIsGood)
+				
+				if (EdgeToUse.PointA == RoomLocation)
 				{
-					AllToDraw.Add(ToDrawCircle(CenterCircleToDraw,TriangleToCheck.GetRayon()));
-				} else
-				{
-					UE_LOG(LogTemp, Warning, TEXT("Center circle is not good"));
+					RoomLocation = EdgeToUse.PointB;
 				}
+				else
+				{
+					RoomLocation = EdgeToUse.PointA;
+				}
+				
+				FirstPath.Add(EdgeToUse);
+				EdgeToRemove.Add(EdgeToUse);
+				HaveToEnd = true;
+				break;
 				
 			}
 
+			if (EdgeToRemove.Num() > 0)
+			{
+				for (const FTriangleEdge& ToRemove : EdgeToRemove)
+				{
+					EdgesSorted.Remove(ToRemove);
+					if (EdgesSorted.Num() <= 0)
+					{
+						DistancesToRemove.Add(distance);
+					}
+					
+				}
+			}
 			
+			if (HaveToEnd)
+			{
+				break;
+			}
+			
+		}
+		
+		if (DistancesToRemove.Num() > 0)
+		{
+			for (const float& DistanceToUse : DistancesToRemove)
+			{
+				PointsSortedByDistance.Remove(DistanceToUse);
+			}
+		}
+		
+	}
+	
 
+	for (const FTriangleEdge& singlePath : FirstPath)
+	{
+		singlePath.DrawEdge(GetWorld());
+	}
+	
+}
 
+void URoomManager::EvolvePath()
+{
+	ClearDrawAll();
+	for (FTriangleEdge EdgeToCheck : FirstPath)
+	{
+		if (EdgeToCheck.IsStraightLine())
+		{
+			EvolvedPath.Add(EdgeToCheck);
 		}
 		else
 		{
-			if (CurrentLittleStep == 1)
-			{
-				
-				// tracage les cercles circonscrit des differents triangles
-				for (FTriangle& TriangleToCheck : LastTrianglesCreated)
-				{
-					FVector CenterCircle;
-					bool result = TriangleToCheck.CenterCircle(CenterCircle);
-					if (!result)
-					{
-						continue;
-					}
-					FVector CenterCircleToDraw;
-					if (TriangleToCheck.CenterCircle(CenterCircleToDraw))
-					{
-						AllToDraw.Add(ToDrawCircle(CenterCircleToDraw,TriangleToCheck.GetRayon()));
-					} else
-					{
-						UE_LOG(LogTemp, Warning, TEXT("Center circle is not good"));
-					}
-
-				}
-				CurrentLittleStep += 1;
-			}
-			else if (CurrentLittleStep == 2)
-			{
-				// tracage les cercles circonscrit des differents triangles, et si le point choisi fait partie du cercle, on efface le triangle proprietaire du cercle
-				for (FTriangle& TriangleToCheck : LastTrianglesCreated)
-				{
-					// dist centre circle et point
-					// si il est plus grand ou plus petit que le rayon
-					FVector CenterCircle;
-					bool result = TriangleToCheck.CenterCircle(CenterCircle);
-					if (!result)
-					{
-						continue;
-					}
-					float Dist = FMath::Abs((CenterCircle - Room->GetActorLocation()).Length());
-					FVector CenterCircleToDraw;
-					bool CenterCircleIsGood = TriangleToCheck.CenterCircle(CenterCircleToDraw);
-					if (CenterCircleIsGood)
-					{
-						AllToDraw.Add(ToDrawCircle(CenterCircleToDraw,TriangleToCheck.GetRayon()));
-					} else
-					{
-						UE_LOG(LogTemp, Warning, TEXT("Center circle is not good"));
-					}
-					if (Dist <= TriangleToCheck.GetRayon() && TriangleToCheck != Megatriangle)
-					{
-						AllTriangles.Remove(TriangleToCheck);
-						TriangleErased.AddUnique(TriangleToCheck);
-					}
-				}
-				LastTrianglesCreated.Empty();
-
-				CurrentLittleStep += 1;
-			}			
-			else if (CurrentLittleStep == 3)
-			{
-
-				// ALGORITHME BOWYER-WATSON CORRECT
-				// 1. Collecter toutes les edges des triangles supprimés
-				TArray<FTriangleEdge> AllEdges;
-				for (FTriangle& ErasedTriangle : TriangleErased)
-				{
-					TArray<FTriangleEdge> TriangleEdges = ErasedTriangle.GetEdges();
-					AllEdges.Append(TriangleEdges);
-				}
-
-				// 2. Identifier les edges de boundary (qui apparaissent exactement une fois)
-				TArray<FTriangleEdge> BoundaryEdges;
-				for (int32 i = 0; i < AllEdges.Num(); ++i)
-				{
-					if (AllEdges[i].PointA.IsZero() && AllEdges[i].PointB.IsZero()) 
-						continue; // Skip edges marquées comme supprimées
-					
-					int32 Count = 1;
-					// Compter combien de fois cette edge apparaît
-					for (int32 j = i + 1; j < AllEdges.Num(); ++j)
-					{
-						if (AllEdges[i] == AllEdges[j])
-						{
-							Count++;
-							// Marquer l'edge comme traitée
-							AllEdges[j].PointA = FVector::ZeroVector;
-							AllEdges[j].PointB = FVector::ZeroVector;
-						}
-					}
-					
-					// Si l'edge apparaît exactement une fois, c'est une edge de boundary
-					if (Count == 1)
-					{
-						BoundaryEdges.Add(AllEdges[i]);
-					}
-				}
-				
-				TriangleErased.Empty();
-
-				// 3. Créer de nouveaux triangles en connectant le point à chaque edge de boundary
-				TArray<FTriangle> TrianglesToAdd;
-				for (const FTriangleEdge& Edge : BoundaryEdges)
-				{
-					FTriangle NewTriangle(Room->GetActorLocation(), Edge.PointA, Edge.PointB);
-					TrianglesToAdd.Add(NewTriangle);
-				}
-
-
-				// Ajouts des triangles a la liste
-				for (FTriangle& TriangleToAdd : TrianglesToAdd)
-				{
-					TriangleToAdd.DrawTriangle(GetWorld());
-					AllTriangles.AddUnique(TriangleToAdd);
-					LastTrianglesCreated.AddUnique(TriangleToAdd);
-				}
-
-				CurrentLittleStep = 0;
-				CurrentStep +=1;
-				
-			}
+			FVector FirstIntersection(EdgeToCheck.PointA.X, EdgeToCheck.PointB.Y,0);
 			
+			FTriangleEdge ToAdd1 = FTriangleEdge(EdgeToCheck.PointA, FirstIntersection);
+			FTriangleEdge ToAdd2 = FTriangleEdge(FirstIntersection, EdgeToCheck.PointB);
+
+			FVector SecondIntersection(EdgeToCheck.PointB.X, EdgeToCheck.PointA.Y,0);
+			FTriangleEdge ToAdd3 = FTriangleEdge(EdgeToCheck.PointA, SecondIntersection);
+			FTriangleEdge ToAdd4 = FTriangleEdge(SecondIntersection, EdgeToCheck.PointB);
+
+			EvolvedPath.Add(ToAdd1);
+			EvolvedPath.Add(ToAdd2);
+			EvolvedPath.Add(ToAdd3);
+			EvolvedPath.Add(ToAdd4);
 		}
-		
 	}
-	
-	
-	DrawAll();
-	DrawDebugSphere(GetWorld(),Room->GetActorLocation(),50,50,FColor(0,0,0),true,-1,0 , 50);
-	for (auto toDraw : AllToDraw)
+
+	for (const auto& Edge : EvolvedPath)
 	{
-		DrawDebugCircle(GetWorld(), toDraw.Center, toDraw.radius, 50, FColor::Blue, true, -1, 0, 50, FVector(0,1,0), FVector(1,0,0));
+		Edge.DrawEdge(GetWorld());
 	}
 
 }
 
+void URoomManager::ClearSecondaryRoom(TSubclassOf<ARoomParent> SecondaryRoomType)
+{
+	TArray<AActor*> AllSecondaryRoom;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(),SecondaryRoomType,AllSecondaryRoom);
 
+	if (AllTriangles.Num() <= 0)
+	{
+		return;
+	}
+
+	// Vérifier si EvolvedPath est vide
+	if (EvolvedPath.Num() == 0)
+	{
+		return;
+	}
+
+	for (int SecondaryRoomIndex = 0; SecondaryRoomIndex < AllSecondaryRoom.Num(); ++SecondaryRoomIndex)
+	{
+		AActor* SecondaryRoom = AllSecondaryRoom[SecondaryRoomIndex];
+		if (!SecondaryRoom) continue;
+		
+		ARoomParent* RoomParent = Cast<ARoomParent>(SecondaryRoom);
+		if (!RoomParent || !RoomParent->BoxCollision) 
+		{
+			continue;
+		}
+		
+		// Utiliser la taille réelle de la BoxCollision
+		FVector BoxExtent = RoomParent->BoxCollision->GetScaledBoxExtent();
+		FVector RoomLocation = SecondaryRoom->GetActorLocation();
+		
+		bool IsInPath = false;
+		
+		// Vérifier si la room est intersectée par AU MOINS UN segment du chemin
+		for (const FTriangleEdge& EdgeToCheck : EvolvedPath)
+		{
+			// Utiliser BoxExtent * 2 pour avoir la taille totale de la boîte
+			if (IsSegmentIntersectingBox(EdgeToCheck.PointA, EdgeToCheck.PointB, RoomLocation, BoxExtent * 2.0f))
+			{
+				IsInPath = true;
+				break;
+			}
+		}
+		
+		// Détruire la room seulement si elle n'est PAS dans le chemin
+		if (!IsInPath)
+		{
+			SecondaryRoom->Destroy();
+		}
+
+	}
+
+}
+// Width = X, Height = Z, Depth = Y
+bool URoomManager::IsSegmentIntersectingBox(const FVector& PointA, const FVector& PointB, const FVector& CenterOfBox, FVector Size)
+{
+	FVector Extent = Size* 0.5;
+	FBox Box(CenterOfBox - Extent, CenterOfBox + Extent);
+
+	// Vérifie si un des points est à l'intérieur
+	if (Box.IsInside(PointA) || Box.IsInside(PointB))
+		return true;
+
+	float tmin = 0.0f;
+	float tmax = 1.0f;
+
+	FVector d = PointB - PointA;
+
+	for (int i = 0; i < 3; i++)
+	{
+		if (FMath::Abs(d[i]) < KINDA_SMALL_NUMBER)
+		{
+			// Segment parallèle aux faces
+			if (PointA[i] < Box.Min[i] || PointA[i] > Box.Max[i])
+				return false;
+		}
+		else
+		{
+			float ood = 1.0f / d[i];
+			float t1 = (Box.Min[i] - PointA[i]) * ood;
+			float t2 = (Box.Max[i] - PointA[i]) * ood;
+
+			if (t1 > t2) Swap(t1, t2);
+
+			tmin = FMath::Max(tmin, t1);
+			tmax = FMath::Min(tmax, t2);
+
+			if (tmin > tmax)
+				return false;
+		}
+	}
+
+	return true;
+}
 
 // TEST Optimisation
 
@@ -649,6 +541,8 @@ void URoomManager::ClearAll()
 	AllTriangles.Empty();
 	TriangleErased.Empty();
 	LastTrianglesCreated.Empty();
+	FirstPath.Empty();
+	EvolvedPath.Empty();
 
 	for (ARoomParent* SpawnedActor : SpawnedActors)
 	{
@@ -689,6 +583,16 @@ void URoomManager::RemoveSuperTriangles()
 		}
 		return false; // Garder ce triangle
 	});
+}
+
+template<typename T>
+const T* URoomManager::GetAnyElement(const TSet<T>& Set)
+{
+	if (Set.Num() == 0)
+		return nullptr;
+
+	auto It = Set.CreateConstIterator();
+	return &(*It);
 }
 
 #pragma optimize("", on)

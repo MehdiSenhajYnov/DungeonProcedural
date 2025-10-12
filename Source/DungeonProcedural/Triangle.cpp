@@ -1,6 +1,7 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 #include "DungeonProcedural/Triangle.h"
 
+#include "MathUtil.h"
 #include "ViewportInteractionTypes.h"
 
 FTriangle::FTriangle(FVector pointA, FVector pointB, FVector pointC)
@@ -96,4 +97,14 @@ bool FLine::Intersection(FLine LineChecked,FVector& OutCenter)
 	float t2 = (AprimeBprime.X * LineChecked.Direction.Y - AprimeBprime.Y * LineChecked.Direction.X) / det;
 	OutCenter = Point*Direction * t2;
 	return true;
+}
+
+float FTriangleEdge::GetLength() const
+{
+	return (PointB - PointA).Length();
+}
+
+void FTriangleEdge::DrawEdge(const UWorld* InWorld, FColor ColorToUse) const
+{
+	DrawDebugLine(InWorld, PointA, PointB, ColorToUse,true,-1,0,50);
 }

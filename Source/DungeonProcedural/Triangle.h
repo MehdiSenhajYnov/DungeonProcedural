@@ -73,6 +73,23 @@ struct FTriangleEdge
 	
 	UPROPERTY()
 	FVector PointB;
+
+	float GetLength() const;
+
+	void DrawEdge(const UWorld* InWorld, FColor ColorToUse = FColor(0,255,0)) const;
+
+	bool IsStraightLine(float Tolerance = 50) const
+	{
+		if (FMath::IsNearlyEqual(PointA.X, PointB.X, Tolerance))
+		{
+			return true;
+		}
+		if (FMath::IsNearlyEqual(PointA.Y, PointB.Y, Tolerance))
+		{
+			return true;
+		}
+		return false;
+	}
 	
 	bool operator==(const FTriangleEdge& Other) const
 	{
@@ -80,3 +97,8 @@ struct FTriangleEdge
 			   (PointA.Equals(Other.PointB) && PointB.Equals(Other.PointA));
 	}
 };
+
+FORCEINLINE uint32 GetTypeHash(const FTriangleEdge& Edge)
+{
+	return HashCombine(GetTypeHash(Edge.PointA), GetTypeHash(Edge.PointB));
+}
