@@ -38,6 +38,9 @@ public:
 	void EvolvePath();	
 
 	UFUNCTION(BlueprintCallable)
+	void SpawnConnectionModules(TSubclassOf<AActor> CorridorBP);
+	
+	UFUNCTION(BlueprintCallable)
 	void ClearSecondaryRoom(TSubclassOf<ARoomParent> SecondaryRoomType);
 	bool IsSegmentIntersectingBox(const FVector& PointA, const FVector& PointB, const FVector& CenterOfBox, FVector Size);
 
@@ -69,11 +72,48 @@ public:
 
 	template<typename T>
 	const T* GetAnyElement(const TSet<T>& Set);
+
+	UFUNCTION(BlueprintCallable)
+	void StepByStep(TSubclassOf<ARoomParent> RoomP,TSubclassOf<ARoomParent> RoomS,TSubclassOf<ARoomParent> RoomC);
+
+	UFUNCTION(BlueprintCallable)
+	void StartAutoDemo(TSubclassOf<ARoomParent> RoomP,TSubclassOf<ARoomParent> RoomS,TSubclassOf<ARoomParent> RoomC,float StepDelaySeconds);
+
+	UFUNCTION(BlueprintCallable)
+	void StopAutoDemo();
+	
+	// Étapes internes
+	void StepByStepTriangulation(TSubclassOf<ARoomParent> RoomP);
+	void StepByStepPrim(TSubclassOf<ARoomParent> RoomP);
+	void StepByStepEvolvePath();
+	void StepByStepClear(TSubclassOf<ARoomParent> RoomS);
+	void StepByStepCorridors(TSubclassOf<ARoomParent> RoomC);
+	void ResetStepByStep();
+	void RedrawStableState();
+
 private:
 	bool CheckOverlapping(const UBoxComponent* BoxA, const UBoxComponent* BoxB);
 
+	// Pour la triangulation progressive
 	int CurrentStep = 0;
+	TArray<AActor*> RoomPrincipallist;
+	int CurrentPointIndex = 0;
 	int CurrentLittleStep = 0;
+	int32 StepRunId = 0;      // id de la génération en cours
+	int32 ActiveRunId = -1;   // ce qu'on a dessiné
+	bool bMSTInitialized = false;
+	bool bPathsEvolved = false;
+
+	// état auto
+	void AutoTick(); // une "avance" de plus dans la démo
+	
+	bool bAutoDemo = false;
+	float AutoDelay = 0.6f;
+	FTimerHandle AutoDemoTimer;
+
+	TSubclassOf<ARoomParent> AutoRoomP;
+	TSubclassOf<ARoomParent> AutoRoomS;
+	TSubclassOf<ARoomParent> AutoRoomC;
 	
 	// Stocker les positions du méga-triangle pour pouvoir les supprimer à la fin
 	FVector MegaTrianglePointA;
@@ -83,7 +123,6 @@ private:
 	void RemoveSuperTriangles();
 	
 };
-
 
 struct ToDrawCircle
 {
@@ -97,6 +136,5 @@ struct ToDrawCircle
 
 	FVector Center;
 	float radius;
-	
 };
 

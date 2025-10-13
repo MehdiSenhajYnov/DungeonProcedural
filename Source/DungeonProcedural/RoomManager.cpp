@@ -191,7 +191,15 @@ void URoomManager::Triangulation(TSubclassOf<ARoomParent> RoomP)
 	RemoveSuperTriangles();
 	
 	DrawAll();
-
+	UE_LOG(LogTemp, Display, TEXT("=== [Delaunay Triangles] ==="));
+	for (const FTriangle& Tri : AllTriangles)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Triangle: (%.0f,%.0f) | (%.0f,%.0f) | (%.0f,%.0f)"),
+			Tri.PointA.X, Tri.PointA.Y,
+			Tri.PointB.X, Tri.PointB.Y,
+			Tri.PointC.X, Tri.PointC.Y);
+	}
+	UE_LOG(LogTemp, Display, TEXT("=============================="));
 	UE_LOG(LogTemp, Display, TEXT("FINI!"))
 }
 
@@ -303,7 +311,14 @@ void URoomManager::CreatePath(TSubclassOf<ARoomParent> RoomP)
 		
 	}
 	
-
+	UE_LOG(LogTemp, Display, TEXT("=== [MST - FirstPath] ==="));
+	for (const FTriangleEdge& Edge : FirstPath)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Edge: (%.0f,%.0f) -> (%.0f,%.0f)"),
+			Edge.PointA.X, Edge.PointA.Y,
+			Edge.PointB.X, Edge.PointB.Y);
+	}
+	UE_LOG(LogTemp, Display, TEXT("==========================="));
 	for (const FTriangleEdge& singlePath : FirstPath)
 	{
 		singlePath.DrawEdge(GetWorld());
@@ -313,35 +328,51 @@ void URoomManager::CreatePath(TSubclassOf<ARoomParent> RoomP)
 
 void URoomManager::EvolvePath()
 {
+	// Nettoyage des anciens tracés
 	ClearDrawAll();
-	for (FTriangleEdge EdgeToCheck : FirstPath)
+	EvolvedPath.Empty();
+
+	// Pour chaque connexion entre deux salles principales
+	for (const FTriangleEdge& EdgeToCheck : FirstPath)
 	{
+		// Si les deux salles sont déjà alignées (horizontal ou vertical)
 		if (EdgeToCheck.IsStraightLine())
 		{
 			EvolvedPath.Add(EdgeToCheck);
 		}
 		else
 		{
-			FVector FirstIntersection(EdgeToCheck.PointA.X, EdgeToCheck.PointB.Y,0);
-			
-			FTriangleEdge ToAdd1 = FTriangleEdge(EdgeToCheck.PointA, FirstIntersection);
-			FTriangleEdge ToAdd2 = FTriangleEdge(FirstIntersection, EdgeToCheck.PointB);
+			// On doit créer un chemin en L
+			FVector Intersection;
 
-			FVector SecondIntersection(EdgeToCheck.PointB.X, EdgeToCheck.PointA.Y,0);
-			FTriangleEdge ToAdd3 = FTriangleEdge(EdgeToCheck.PointA, SecondIntersection);
-			FTriangleEdge ToAdd4 = FTriangleEdge(SecondIntersection, EdgeToCheck.PointB);
+			// Deux possibilités pour créer le "L" :
+			// - (A.x, B.y) : on part d'abord horizontalement, puis verticalement
+			// - (B.x, A.y) : on part d'abord verticalement, puis horizontalement
+			// On en choisit UNE seule (aléatoirement pour varier la génération)
+			if (FMath::RandBool())
+				Intersection = FVector(EdgeToCheck.PointA.X, EdgeToCheck.PointB.Y, 0);
+			else
+				Intersection = FVector(EdgeToCheck.PointB.X, EdgeToCheck.PointA.Y, 0);
 
-			EvolvedPath.Add(ToAdd1);
-			EvolvedPath.Add(ToAdd2);
-			EvolvedPath.Add(ToAdd3);
-			EvolvedPath.Add(ToAdd4);
+			// Ajout des deux segments composant le "L"
+			EvolvedPath.Add(FTriangleEdge(EdgeToCheck.PointA, Intersection));
+			EvolvedPath.Add(FTriangleEdge(Intersection, EdgeToCheck.PointB));
 		}
 	}
 
+	// Dessin de tous les chemins générés pour visualisation dans l'éditeur
 	for (const auto& Edge : EvolvedPath)
 	{
 		Edge.DrawEdge(GetWorld());
 	}
+	UE_LOG(LogTemp, Display, TEXT("=== [Evolved Path - L-shapes] ==="));
+	for (const FTriangleEdge& Edge : EvolvedPath)
+	{
+		UE_LOG(LogTemp, Display, TEXT("Path: (%.0f,%.0f) -> (%.0f,%.0f)"),
+			Edge.PointA.X, Edge.PointA.Y,
+			Edge.PointB.X, Edge.PointB.Y);
+	}
+	UE_LOG(LogTemp, Display, TEXT("==============================="));
 
 }
 
@@ -489,7 +520,7 @@ void URoomManager::ResolveRoomOverlaps(TArray<ARoomParent*>& SpawnedActorsRaw)
 					{
 						RepulsionDirection.Normalize();
 		            
-						float MoveDistance = 50.0f;
+						float MoveDistance = 1000.0f;
 						CurrentRoom->AddActorLocalOffset(RepulsionDirection * MoveDistance);
 						break;
 					}
@@ -517,6 +548,37 @@ bool URoomManager::CheckOverlapping(const UBoxComponent* BoxA, const UBoxCompone
 		   (FMath::Abs(CenterA.Z - CenterB.Z) <= (ExtentA.Z + ExtentB.Z));
 }
 
+void URoomManager::AutoTick()
+{
+	if (!bAutoDemo)
+		return;
+
+	// Avance d’un cran dans la démo (réutilise ta logique manuelle)
+	StepByStep(AutoRoomP, AutoRoomS, AutoRoomC);
+
+	// Condition d’arrêt : toutes les grandes étapes sont finies
+	// (0:Triang, 1:Prim, 2:L, 3:Clear, 4:Corridors)
+	if (CurrentStep > 4)
+	{
+		StopAutoDemo();
+		UE_LOG(LogTemp, Display, TEXT("Completed all steps."));
+	}
+
+	// Protection : si jamais quelqu’un "ClearAll" en plein milieu, on stoppe proprement
+	// (tu peux garder ou retirer, c’est juste une sécurité)
+	if (AllTriangles.Num() == 0 && CurrentStep == 0)
+	{
+		StopAutoDemo();
+		UE_LOG(LogTemp, Warning, TEXT("Aborted (no triangles). Did you ClearAll?"));
+	}
+}
+
+void URoomManager::StopAutoDemo()
+{
+	bAutoDemo = false;
+	GetWorld()->GetTimerManager().ClearTimer(AutoDemoTimer);
+	UE_LOG(LogTemp, Display, TEXT("STOP Auto Play"));
+}
 
 
 void URoomManager::DrawAll()
@@ -543,7 +605,9 @@ void URoomManager::ClearAll()
 	LastTrianglesCreated.Empty();
 	FirstPath.Empty();
 	EvolvedPath.Empty();
-
+	ResetStepByStep();
+	RemoveSuperTriangles();
+	
 	for (ARoomParent* SpawnedActor : SpawnedActors)
 	{
 		if (IsValid(SpawnedActor))
@@ -593,6 +657,324 @@ const T* URoomManager::GetAnyElement(const TSet<T>& Set)
 
 	auto It = Set.CreateConstIterator();
 	return &(*It);
+}
+
+void URoomManager::SpawnConnectionModules(TSubclassOf<AActor> CorridorBP)
+{
+	ClearDrawAll();
+	if (EvolvedPath.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Pas de chemins évolués pour créer les modules de connexion."));
+		return;
+	}
+
+	for (const FTriangleEdge& Edge : EvolvedPath)
+	{
+		FVector Start = Edge.PointA;
+		FVector End = Edge.PointB;
+
+		FVector Direction = End - Start;
+		float Length = Direction.Length();
+		Direction.Normalize();
+
+		// Calcul de la position médiane pour placer le couloir
+		FVector Middle = Start + (Direction * (Length / 2));
+
+		// Calcul de la rotation
+		FRotator Rotation = Direction.Rotation();
+
+		// Spawn du couloir
+		FActorSpawnParameters SpawnParams;
+		AActor* Corridor = GetWorld()->SpawnActor<AActor>(CorridorBP, Middle, Rotation, SpawnParams);
+		if (!Corridor) continue;
+
+		// Mise à l’échelle selon la longueur du segment
+		FVector Scale = Corridor->GetActorScale3D();
+		Scale.X = Length / 100.0f; // Ajuste le "100" selon la longueur d’un mesh de base
+		Corridor->SetActorScale3D(Scale);
+
+		// Optionnel : garde une référence pour cleanup plus tard
+		OtherActorsToClear.Add(Corridor);
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("✅ Modules de connexion générés (%d segments)."), EvolvedPath.Num());
+}
+
+void URoomManager::StepByStep(TSubclassOf<ARoomParent> RoomP,TSubclassOf<ARoomParent> RoomS,TSubclassOf<ARoomParent> RoomC)
+{
+	UE_LOG(LogTemp, Display, TEXT("=== STEP BY STEP === Step: %d | SubStep: %d"), CurrentStep, CurrentLittleStep);
+
+	switch (CurrentStep)
+	{
+	case 0: StepByStepTriangulation(RoomP); break;
+	case 1: StepByStepPrim(RoomP); break;
+	case 2: StepByStepEvolvePath(); break;
+	case 3: StepByStepClear(RoomS); break;
+	case 4: StepByStepCorridors(RoomC); break;
+	default:
+		UE_LOG(LogTemp, Display, TEXT("Toutes les étapes sont terminées."));
+		break;
+	}
+}
+
+void URoomManager::StartAutoDemo(TSubclassOf<ARoomParent> RoomP, TSubclassOf<ARoomParent> RoomS,
+	TSubclassOf<ARoomParent> RoomC, float StepDelaySeconds)
+{
+	// garde les classes et le tempo
+	AutoRoomP = RoomP;
+	AutoRoomS = RoomS;
+	AutoRoomC = RoomC;
+	AutoDelay = FMath::Max(0.05f, StepDelaySeconds);
+
+	// reset propre du step-by-step (et flags MST, etc.)
+	ResetStepByStep();
+
+	// on NE détruit pas ce que tu viens de générer : on part de l’état courant (méga-triangle déjà fait)
+	bAutoDemo = true;
+
+	// timer répétitif : chaque tick avance d’une sous-étape (exactement comme si tu cliquais)
+	GetWorld()->GetTimerManager().SetTimer(
+		AutoDemoTimer, this, &URoomManager::AutoTick, AutoDelay, true);
+
+	UE_LOG(LogTemp, Display, TEXT("[AutoDemo] START (delay=%.2fs)"), AutoDelay);
+}
+
+void URoomManager::StepByStepTriangulation(TSubclassOf<ARoomParent> RoomP)
+{
+	if (ActiveRunId != StepRunId)
+	{
+		ActiveRunId = StepRunId;
+		CurrentStep = 0;
+		CurrentLittleStep = 0;
+		CurrentPointIndex = 0;
+		RoomPrincipallist.Empty();
+		UGameplayStatics::GetAllActorsOfClass(GetWorld(), RoomP, RoomPrincipallist);
+		FlushPersistentDebugLines(GetWorld());
+	}
+    if (RoomPrincipallist.Num() == 0)
+        UGameplayStatics::GetAllActorsOfClass(GetWorld(), RoomP, RoomPrincipallist);
+
+    if (AllTriangles.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Veuillez créer le méga triangle avant !"));
+        return;
+    }
+
+    if (CurrentPointIndex >= RoomPrincipallist.Num())
+    {
+        UE_LOG(LogTemp, Display, TEXT("Triangulation terminée !"));
+    	RemoveSuperTriangles();
+        CurrentStep++;
+        CurrentPointIndex = 0;
+        CurrentLittleStep = 0;
+        return;
+    }
+
+    AActor* Room = RoomPrincipallist[CurrentPointIndex];
+    FVector RoomLocation = Room->GetActorLocation();
+
+    switch (CurrentLittleStep)
+    {
+        // 1️⃣ Choix du point
+        case 0:
+            ClearDrawAll();
+    		RedrawStableState();
+            DrawDebugSphere(GetWorld(), RoomLocation, 100, 16, FColor::Blue, true, -1);
+            UE_LOG(LogTemp, Display, TEXT("[Step %d] Nouveau point (%.0f, %.0f)"), CurrentPointIndex, RoomLocation.X, RoomLocation.Y);
+            CurrentLittleStep++;
+            break;
+
+    	// 2️⃣ Dessiner les cercles des triangles testés pour le point courant
+	    case 1:
+    		ClearDrawAll();
+    		RedrawStableState();
+
+    		for (const FTriangle& Tri : AllTriangles)
+    		{
+    			FVector Center;
+    			if (Tri.CenterCircle(Center))
+    			{
+    				float R = Tri.GetRayon();
+    				bool bInside = FVector::Dist(Center, RoomLocation) <= R;
+
+    				DrawDebugCircle(
+						GetWorld(),
+						Center,
+						R,
+						64,
+						bInside ? FColor::Red : FColor::Cyan, // rouge si point à l'intérieur, cyan sinon
+						true,  // bPersistentLines
+						-1,    // durée infinie
+						0,
+						20.f,
+						FVector(1, 0, 0),
+						FVector(0, 1, 0),
+						false
+					);
+    			}
+    		}
+
+    		DrawDebugSphere(GetWorld(), RoomLocation, 100, 16, FColor::Blue, true, -1);
+    		UE_LOG(LogTemp, Display, TEXT("[Step %d] Cercles testés pour le point courant affichés"), CurrentPointIndex);
+    		CurrentLittleStep++;
+    		break;
+
+        // 3️⃣ Identifier et marquer les triangles invalides
+        case 2:
+            ClearDrawAll();
+    		RedrawStableState();
+            TriangleErased.Empty();
+            for (const FTriangle& Tri : AllTriangles)
+            {
+                FVector Center;
+                if (Tri.CenterCircle(Center))
+                {
+                    if (FVector::Dist(Center, RoomLocation) <= Tri.GetRayon())
+                    {
+                        TriangleErased.Add(Tri);
+                        Tri.DrawTriangle(GetWorld(), FColor::Red);
+                    }
+                    else
+                    {
+                        Tri.DrawTriangle(GetWorld(), FColor::Green);
+                    }
+                }
+            }
+            UE_LOG(LogTemp, Display, TEXT("[Step %d] %d triangles invalides détectés"), CurrentPointIndex, TriangleErased.Num());
+            CurrentLittleStep++;
+            break;
+
+        // 4️⃣ Supprimer les bad triangles + créer les nouveaux
+        case 3:
+        {
+            // Supprimer les bad triangles
+            for (const FTriangle& T : TriangleErased)
+                AllTriangles.RemoveSingle(T);
+
+            // Récupérer toutes les edges
+            TArray<FTriangleEdge> Edges;
+            for (const FTriangle& T : TriangleErased)
+                Edges.Append(T.GetEdges());
+
+            // Identifier les edges uniques (frontières)
+            TArray<FTriangleEdge> Boundary;
+            for (int32 i = 0; i < Edges.Num(); ++i)
+            {
+                if (Edges[i].PointA.IsZero()) continue;
+                int Count = 1;
+                for (int32 j = i + 1; j < Edges.Num(); ++j)
+                {
+                    if (Edges[i] == Edges[j])
+                    {
+                        Count++;
+                        Edges[j].PointA = FVector::ZeroVector;
+                        Edges[j].PointB = FVector::ZeroVector;
+                    }
+                }
+                if (Count == 1)
+                {
+                    Boundary.Add(Edges[i]);
+                    Edges[i].DrawEdge(GetWorld(), FColor::Yellow);
+                }
+            }
+
+            // Créer les nouveaux triangles
+            for (const FTriangleEdge& Edge : Boundary)
+            {
+                FTriangle NewTri(RoomLocation, Edge.PointA, Edge.PointB);
+                NewTri.DrawTriangle(GetWorld(), FColor::Green);
+                AllTriangles.Add(NewTri);
+            }
+
+            UE_LOG(LogTemp, Display, TEXT("[Step %d] Nouveaux triangles créés : %d"), CurrentPointIndex, Boundary.Num());
+            CurrentLittleStep = 0;
+            CurrentPointIndex++;
+            break;
+        }
+    }
+}
+
+
+void URoomManager::StepByStepPrim(TSubclassOf<ARoomParent> RoomP)
+{
+	ClearDrawAll();
+	RedrawStableState();
+
+	// Sécurité : (re)construire le MST si on change de run, si jamais pas fait, ou si vidé.
+	if (FirstPath.Num() == 0 || !bMSTInitialized || ActiveRunId != StepRunId)
+	{
+		// ⚠️ filtre méga-triangle côté path (voir point 3 plus bas)
+		FirstPath.Empty();
+		bMSTInitialized = false;
+
+		CreatePath(RoomP);          // -> remplit FirstPath
+		bMSTInitialized = true;
+	}
+
+	for (const FTriangleEdge& Edge : FirstPath)
+		Edge.DrawEdge(GetWorld(), FColor::Cyan);
+
+	UE_LOG(LogTemp, Display, TEXT("[Prim] %d arêtes affichées."), FirstPath.Num());
+
+	CurrentStep++;
+	CurrentLittleStep = 0;
+}
+
+void URoomManager::StepByStepEvolvePath()
+{
+	ClearDrawAll();
+	RedrawStableState();
+
+	if (FirstPath.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FirstPath vide : lance Prim avant (Step suivant)."));
+		return;
+	}
+
+	EvolvePath();
+	for (const FTriangleEdge& Edge : EvolvedPath)
+		Edge.DrawEdge(GetWorld(), FColor::Green);
+
+	UE_LOG(LogTemp, Display, TEXT("[Path] Chemins en L dessinés."));
+	CurrentStep++;
+}
+
+void URoomManager::StepByStepClear(TSubclassOf<ARoomParent> RoomS)
+{
+	ClearSecondaryRoom(RoomS); // RoomC = salles secondaires
+	UE_LOG(LogTemp, Display, TEXT("[Clear] Salles secondaires supprimées."));
+	CurrentStep++;
+}
+
+void URoomManager::StepByStepCorridors(TSubclassOf<ARoomParent> RoomC)
+{
+	SpawnConnectionModules(RoomC);
+	UE_LOG(LogTemp, Display, TEXT("[Corridor] Corridors créés."));
+	CurrentStep++;
+}
+
+void URoomManager::ResetStepByStep()
+{
+	CurrentStep = 0;
+	CurrentLittleStep = 0;
+	CurrentPointIndex = 0;
+
+	bMSTInitialized = false;
+	bPathsEvolved = false;
+
+	// on relancera toujours un nouveau run id
+	StepRunId++;
+
+	// IMPORTANT : on vide les caches visuels mais on ne détruit pas la data du donjon ici
+	FlushPersistentDebugLines(GetWorld());
+}
+
+void URoomManager::RedrawStableState()
+{
+	// utile si tu veux “repeindre” après un flush : redessine ce qui est déjà validé
+	for (const FTriangle& T : AllTriangles)           T.DrawTriangle(GetWorld(), FColor(0,255,0));
+	for (const FTriangleEdge& E : FirstPath)          E.DrawEdge(GetWorld(), FColor::Cyan);
+	for (const FTriangleEdge& E : EvolvedPath)        E.DrawEdge(GetWorld(), FColor::Green);
 }
 
 #pragma optimize("", on)
