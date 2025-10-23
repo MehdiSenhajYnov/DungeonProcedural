@@ -9,9 +9,10 @@
 // Sets default values
 ARoomParent::ARoomParent()
 {
-	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	// Disable tick for performance - rooms are static after generation
 	PrimaryActorTick.bCanEverTick = true;
 
+	// Create box collision component for overlap detection and room spacing
 	BoxCollision = CreateDefaultSubobject<UBoxComponent>("BoxCollision");
 	RootComponent = BoxCollision;
 }

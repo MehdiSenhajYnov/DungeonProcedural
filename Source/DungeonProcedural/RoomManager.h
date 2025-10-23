@@ -9,37 +9,46 @@
 #include "RoomManager.generated.h"
 
 /**
- * 
+ * World Subsystem responsible for procedural dungeon generation.
+ * Handles triangulation, room spawning, overlap resolution, and path creation.
  */
 UCLASS()
 class DUNGEONPROCEDURAL_API URoomManager : public UWorldSubsystem
 {
 	GENERATED_BODY()
 public:
+	// Array of all spawned room actors in the dungeon
 	UPROPERTY()
 	TArray<ARoomParent*> SpawnedActors;
 
+	// Array of temporary actors (mega-triangle points, corridors) to be cleaned up
 	UPROPERTY()
 	TArray<AActor*> OtherActorsToClear;
 	
+	// Main entry point: generates a complete dungeon with specified number and types of rooms
 	UFUNCTION(BlueprintCallable)
 	void GenerateMap(int NbRoom, TArray<FRoomType> RoomTypes);
 
+	// Creates the super-triangle that encompasses all rooms for Delaunay triangulation
 	UFUNCTION(BlueprintCallable)
 	void MegaTriangle(TSubclassOf<ARoomParent> Room);
 
+	// Performs Delaunay triangulation on all primary rooms
 	UFUNCTION(BlueprintCallable)
 	void Triangulation(TSubclassOf<ARoomParent> RoomP);
 
+	// Creates minimum spanning tree (MST) from triangulated rooms for connectivity
 	UFUNCTION(BlueprintCallable)
 	void CreatePath(TSubclassOf<ARoomParent> RoomP);
 
+	// Converts MST edges into L-shaped corridors (horizontal + vertical segments)
 	UFUNCTION(BlueprintCallable)
 	void EvolvePath();	
 
 	UFUNCTION(BlueprintCallable)
 	void SpawnConnectionModules(TSubclassOf<AActor> CorridorBP);
 	
+	// Removes secondary rooms that don't intersect with corridor paths
 	UFUNCTION(BlueprintCallable)
 	void ClearSecondaryRoom(TSubclassOf<ARoomParent> SecondaryRoomType);
 	bool IsSegmentIntersectingBox(const FVector& PointA, const FVector& PointB, const FVector& CenterOfBox, FVector Size);
@@ -58,9 +67,10 @@ public:
 	UPROPERTY()
 	TArray<FTriangleEdge> EvolvedPath;
 	
-	
+	UPROPERTY()
+	bool TriangulationDone = false;
 
-	// Fonction principale à appeler
+	// Main function for resolving room overlaps using physics-based separation
 	void ResolveRoomOverlaps(TArray<ARoomParent*>& SpawnedActors);
 
 
@@ -82,7 +92,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void StopAutoDemo();
 	
-	// Étapes internes
+	// Internal step-by-step visualization functions
 	void StepByStepTriangulation(TSubclassOf<ARoomParent> RoomP);
 	void StepByStepPrim(TSubclassOf<ARoomParent> RoomP);
 	void StepByStepEvolvePath();
@@ -94,18 +104,18 @@ public:
 private:
 	bool CheckOverlapping(const UBoxComponent* BoxA, const UBoxComponent* BoxB);
 
-	// Pour la triangulation progressive
+	// Progressive triangulation state variables
 	int CurrentStep = 0;
 	TArray<AActor*> RoomPrincipallist;
 	int CurrentPointIndex = 0;
 	int CurrentLittleStep = 0;
-	int32 StepRunId = 0;      // id de la génération en cours
-	int32 ActiveRunId = -1;   // ce qu'on a dessiné
+	int32 StepRunId = 0;
+	int32 ActiveRunId = -1; 
 	bool bMSTInitialized = false;
 	bool bPathsEvolved = false;
 
-	// état auto
-	void AutoTick(); // une "avance" de plus dans la démo
+	// Automatic demo state
+	void AutoTick();
 	
 	bool bAutoDemo = false;
 	float AutoDelay = 0.6f;
@@ -115,7 +125,7 @@ private:
 	TSubclassOf<ARoomParent> AutoRoomS;
 	TSubclassOf<ARoomParent> AutoRoomC;
 	
-	// Stocker les positions du méga-triangle pour pouvoir les supprimer à la fin
+	// Store mega-triangle positions for cleanup after triangulation
 	FVector MegaTrianglePointA;
 	FVector MegaTrianglePointB;
 	FVector MegaTrianglePointC;

@@ -34,14 +34,15 @@ TArray<FTriangleEdge> FTriangle::GetEdges() const
 
 bool FTriangle::CenterCircle(FVector& outCenter) const
 {
+	// Calculate determinant for circumcenter formula
 	double D = 2 * (PointA.X * (PointB.Y - PointC.Y) + PointB.X * (PointC.Y - PointA.Y) + PointC.X * (PointA.Y - PointB.Y));
 	if (FMath::IsNearlyZero(D))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Les points sont colinéaires!"))
+		UE_LOG(LogTemp, Warning, TEXT("Points are collinear!"))
 		return false;
 	}
     
-	// Calcul des coordonnées du circumcenter
+	// Calculate circumcenter coordinates using determinant formula
 	double ux = ((PointA.X*PointA.X + PointA.Y*PointA.Y) * (PointB.Y - PointC.Y) + 
 				 (PointB.X*PointB.X + PointB.Y*PointB.Y) * (PointC.Y - PointA.Y) + 
 				 (PointC.X*PointC.X + PointC.Y*PointC.Y) * (PointA.Y - PointB.Y)) / D;
@@ -56,23 +57,28 @@ bool FTriangle::CenterCircle(FVector& outCenter) const
 
 float FTriangle::GetArea() const
 {
+	// Calculate triangle area using Heron's formula
 	FVector ab = PointB - PointA;
 	FVector bc = PointC - PointB;
 	FVector ca = PointA - PointC;
 	
+	// Semi-perimeter
 	float p = (ab.Length() + bc.Length() + ca.Length())/2;
 
+	// Heron's formula: S = sqrt(p*(p-a)*(p-b)*(p-c))
 	float S = sqrtf(p*(p-ab.Length())*(p-bc.Length())*(p-ca.Length()));
 	return S;
 }
 
 float FTriangle::GetRayon() const
 {
+	// Calculate circumradius for Delaunay triangulation point-in-circle tests
 	FVector ab = PointB - PointA;
 	FVector bc = PointC - PointB;
 	FVector ca = PointA - PointC;
 
 	float S = GetArea();
+	// Circumradius formula: R = (a*b*c)/(4*Area)
 	float R = ((ab.Length()*bc.Length()*ca.Length())/(2*S))/2;
 
 	return R;
@@ -88,9 +94,11 @@ void FTriangle::DrawTriangle(const UWorld* InWorld, FColor ColorToUse) const
 
 bool FLine::Intersection(FLine LineChecked,FVector& OutCenter)
 {
+	// Calculate line intersection using determinant method
 	float det = Direction.X * LineChecked.Direction.Y - Direction.Y * LineChecked.Direction.X;
 	if (FMath::IsNearlyZero(det))
 	{
+		// Lines are parallel
 		return false;
 	}
 	FVector AprimeBprime = LineChecked.Point - Point;

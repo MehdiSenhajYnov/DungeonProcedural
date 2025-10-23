@@ -5,7 +5,6 @@
 
 #include "Components/BoxComponent.h"
 
-#pragma optimize("", off)
 // Sets default values
 UAActorToGenerate::UAActorToGenerate()
 {
@@ -53,4 +52,3 @@ void UAActorToGenerate::PostEditChangeProperty(struct FPropertyChangedEvent& Pro
 	// PropertyChangedEvent.MemberProperty->GetName() == GET_MEMBER_NAME_CHECKED(UAActorToGenerate, RoomTypes);
 }
 
-#pragma optimize("", on)

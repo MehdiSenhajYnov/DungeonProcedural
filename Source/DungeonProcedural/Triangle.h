@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Triangle.generated.h"
 
+// Triangle structure for Delaunay triangulation
+// Contains three points and geometric calculation methods
 USTRUCT(BlueprintType)
 struct FTriangle
 {
@@ -31,21 +33,28 @@ struct FTriangle
 	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	FVector PointC;
 
+	// Returns all three vertices of the triangle
 	TArray<FVector> GetAllPoints() const;
 
+	// Returns the three edges of the triangle
 	TArray<FTriangleEdge> GetEdges() const;
 
+	// Calculates circumcenter for Delaunay triangulation
 	bool CenterCircle(FVector& outCenter) const;
 
+	// Calculates triangle area using Heron's formula
 	float GetArea() const;
 
+	// Calculates circumradius for point-in-circle tests
 	float GetRayon() const;
 
+	// Debug visualization in editor
 	void DrawTriangle(const UWorld* InWorld, FColor ColorToUse = FColor(0,255,0)) const;
 private:
 	TArray<FVector> points;
 };
 
+// Line structure for geometric calculations
 USTRUCT(BlueprintType)
 struct FLine
 {
@@ -56,10 +65,12 @@ struct FLine
 	UPROPERTY()
 	FVector Point;
 
+	// Calculates intersection point between two lines
 	bool Intersection(FLine LineChecked,FVector& OutCenter);
 };
 
-// Structure pour représenter une arête entre deux points
+// Edge structure representing a connection between two points
+// Used for MST creation and corridor generation
 USTRUCT(BlueprintType)
 struct FTriangleEdge
 {
@@ -74,10 +85,13 @@ struct FTriangleEdge
 	UPROPERTY()
 	FVector PointB;
 
+	// Returns the length of the edge
 	float GetLength() const;
 
+	// Debug visualization in editor
 	void DrawEdge(const UWorld* InWorld, FColor ColorToUse = FColor(0,255,0)) const;
 
+	// Checks if edge is horizontal or vertical (for L-shaped corridor optimization)
 	bool IsStraightLine(float Tolerance = 50) const
 	{
 		if (FMath::IsNearlyEqual(PointA.X, PointB.X, Tolerance))
@@ -91,6 +105,7 @@ struct FTriangleEdge
 		return false;
 	}
 	
+	// Equality operator - edges are equal regardless of point order
 	bool operator==(const FTriangleEdge& Other) const
 	{
 		return (PointA.Equals(Other.PointA) && PointB.Equals(Other.PointB)) ||
@@ -98,6 +113,7 @@ struct FTriangleEdge
 	}
 };
 
+// Hash function for using FTriangleEdge in TSet/TMap containers
 FORCEINLINE uint32 GetTypeHash(const FTriangleEdge& Edge)
 {
 	return HashCombine(GetTypeHash(Edge.PointA), GetTypeHash(Edge.PointB));
